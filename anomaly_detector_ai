@@ -1,0 +1,73 @@
+import numpy as np 
+import pandas as pd
+from tensorflow.keras import Model, Input
+from tensorflow.keras.layers import Dense, Normalization
+from tensorflow.keras.optimizers import RMSprop
+import matplotlib.pyplot as plt
+
+
+#dosya okuma, verileri alma
+df = pd.read_csv("anomaly_data.csv", header=None)
+df = df.T
+df.columns=["sensor_value"]
+values = df["sensor_value"].values.reshape(-1,1)
+
+
+#verileri normalize etme istediğimiz aralığa çekmek için 
+normalizer = Normalization()
+normalizer.adapt(values)
+
+#autoencoder
+
+input_layer = Input(shape=(1,))
+x = normalizer(input_layer)
+encoded = Dense(16, activation='relu')(x)
+encoded = Dense(8, activation='relu')(encoded)
+bottleneck = Dense(4, activation='relu')(encoded)
+decoded = Dense(8, activation='relu')(bottleneck)
+decoded = Dense(16,activation='relu')(decoded)
+output= Dense(1, activation = 'linear')(decoded)
+
+
+#modelin oluşumu
+autoencoder = Model(inputs=input_layer, outputs=output)
+autoencoder.compile(optimizer="rmsprop", loss="mse")
+
+#modelin eğitimi
+
+autoencoder.fit(values,values, epochs=5, batch_size=32, validation_split=0.2)
+
+newdata = autoencoder.predict(values) #hatalı değerleri alıyoruz
+mse = np.mean(np.power(values - newdata, 2), axis=1) #değerden hatalı değeri çıkarıp karesini alıyoruz(negatif değer ihtimaline karşı) ve her satır için dönmesi için axis=1 yazıyoruz
+
+
+#hata tespit
+threshold = np.percentile(mse, 99.7) #mse değerlerinin 99.7 sinin üstü sınır kabul edilir
+anomalies = mse > threshold # eğer değer sınır çizgisinden(threshold) büyükse anomali olarak atanır.
+
+#debug
+debugdf = pd.DataFrame({
+    'values': values.flatten(),
+    'newdata': newdata.flatten(),
+    'mse': mse,
+    'threshold': [threshold] * len(mse),  # her satır için threshold ekle
+    'anomaly': anomalies
+})
+
+print(debugdf.head(50))  
+
+
+
+
+
+
+
+#görselleştirme
+
+plt.figure(figsize=(20,10))
+plt.plot(df['sensor_value'], label="sensörden gelen veriler:" )
+plt.scatter(np.where(anomalies)[0], df['sensor_value'][anomalies], color= 'red', label='arızalar,anomaliler')
+plt.legend()
+plt.show()
+
+

@@ -1,0 +1,11 @@
+{
+    "editor.inlineSuggest.enabled": false,
+"github.copilot.enable": {
+    "*": false
+},
+"github.copilot.inlineSuggest.enable": false,
+"github.copilot.suggestion.enable": false,
+"python-envs.defaultEnvManager": "ms-python.python:system",
+"python-envs.pythonProjects": []
+
+}
