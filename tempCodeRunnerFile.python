@@ -1,9 +1,0 @@
-while True:
-    user_input = int(input("enter a value, 0 for exit\n"))
-    if user_input == 0:
-        print("exiting\n")
-        break
-    elif threshold * 100 < user_input:
-        print("this is an anomaly")
-    elif threshold * 100 > user_input:
-        print("not an anomaly")    
