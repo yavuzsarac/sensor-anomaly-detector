@@ -1,9 +1,18 @@
 import numpy as np 
 import pandas as pd
+import tensorflow as tf
 from tensorflow.keras import Model, Input
 from tensorflow.keras.layers import Dense, Normalization
 from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.callbacks import EarlyStopping
 import matplotlib.pyplot as plt
+import random
+
+#seed kısmı
+seed = 102
+np.random.seed(seed)
+random.seed(seed)
+tf.random.set_seed(seed)
 
 
 #dosya okuma, verileri alma
@@ -31,19 +40,46 @@ output= Dense(1, activation = 'linear')(decoded)
 
 #modelin oluşumu
 autoencoder = Model(inputs=input_layer, outputs=output)
-autoencoder.compile(optimizer="rmsprop", loss="mse")
+autoencoder.compile(optimizer="adam", loss="mse")
+autoencoder.summary()
+
+#test verilerinin oluşturulması
+train_data = int(len(values)*0.8) #bütün dataların %80 ini modeli eğitmek için alıyoruz
+
+train_value, test_value = values[:train_data], values[train_data:] #train_value eğitim için ilk %80, test_value doğrulama için son %20 alıyoruz. validation splitte test için alacağı %20 yi train verileriyle karıştırdığı için daha kesin veriler için bunu tercih etim.
+
+#early stopping
+
+early_stop = EarlyStopping(monitor='val_loss', patience=10, min_delta=0.005, restore_best_weights=True)
 
 #modelin eğitimi
 
-autoencoder.fit(values,values, epochs=5, batch_size=32, validation_split=0.2)
-
+#loss ve val_loss grafiği için graph data topluyoruz.
+graph_data = autoencoder.fit(train_value,train_value, epochs=100, batch_size=16, validation_data=(test_value,test_value), callbacks=[early_stop])
+#seed=102-123
 newdata = autoencoder.predict(values) #hatalı değerleri alıyoruz
 mse = np.mean(np.power(values - newdata, 2), axis=1) #değerden hatalı değeri çıkarıp karesini alıyoruz(negatif değer ihtimaline karşı) ve her satır için dönmesi için axis=1 yazıyoruz
 
 
 #hata tespit
-threshold = np.percentile(mse, 99.7) #mse değerlerinin 99.7 sinin üstü sınır kabul edilir
-anomalies = mse > threshold # eğer değer sınır çizgisinden(threshold) büyükse anomali olarak atanır.
+
+   #dinamik threshold
+count = 0
+window_size = 50 #son 100 veriyi alır
+dynamic_threshold = []
+anomalies = np.zeros(len(mse), dtype=bool)
+
+for i in range(len(mse)):
+    window = mse[max(0, i-window_size):i+1]
+    # bakılacak verileri seçme son window size kadar veriyi seçmek için i -window size yapılır negatif çıkmaması için max kullanılır, son veriyi almak 1 veri atlamamak için de :i+1 kullanılır
+    threshold = np.mean(window) + 4* np.std(window) # z score 
+    anomalies[i] = mse[i] > threshold    #eşik değerini geçerse o değer anomali olarak atanır
+    
+    if anomalies[i]:
+        count += 1
+
+# threshold = np.percentile(mse, 99.7) #mse değerlerinin 99.7 sinin üstü sınır kabul edilir
+# anomalies = mse > threshold # eğer değer sınır çizgisinden(threshold) büyükse anomali olarak atanır.
 
 #debug
 debugdf = pd.DataFrame({
@@ -54,7 +90,72 @@ debugdf = pd.DataFrame({
     'anomaly': anomalies
 })
 
-print(debugdf.head(50))  
+#print(debugdf.head(50))  
+#print("--------------------\n last 50 ")
+#print(debugdf.tail(50))
+#print("count:", count)
+
+
+#accuracy için gerekli parametreler 
+
+  #yaptığı ve doğrulamasını hesaplama
+# # eğitim ve doğrulama tahminleri
+# train_pred = autoencoder.predict(train_value)
+# val_pred = autoencoder.predict(test_value)
+
+# # ham mse hesaplama (normalize etmiyoruz)
+# train_mse = np.mean(np.power(train_value - train_pred, 2), axis=1)
+# val_mse = np.mean(np.power(test_value - val_pred, 2), axis=1)
+
+# # ortalama değerlerini al (grafikte netlik için)
+# train_mse_mean = [np.mean(train_mse)] * len(train_mse)
+# val_mse_mean = [np.mean(val_mse)] * len(val_mse)
+
+# # mse grafiği
+# plt.figure(figsize=(12, 6))
+# plt.plot(train_mse_mean, label="Train MSE", color="blue")
+# plt.plot(val_mse_mean, label="Validation MSE", color="orange")
+# plt.title("Eğitim ve Doğrulama MSE Değerleri")
+# plt.xlabel("Epoch")
+# plt.ylabel("MSE (Hata)")
+# plt.legend()
+# plt.grid(True)
+# plt.show()
+
+# MSE değerlerini al
+train_mse = np.array(graph_data.history["loss"])
+val_mse = np.array(graph_data.history["val_loss"])
+
+# Accuracy hesaplama 
+train_acc = 1 / (1 + train_mse)  # hata büyüdükçe accuracy küçülür
+val_acc = 1 / (1 + val_mse)
+
+# Grafiği çizdir
+plt.figure(figsize=(12, 6))
+plt.plot(train_acc, label="Train Accuracy", color="green")
+plt.plot(val_acc, label="Validation Accuracy", color="red")
+plt.title("Epoch Bazlı Accuracy Grafiği (Ham Değerler)")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+
+
+
+
+#loss val_loss grafiği
+plt.figure(figsize=(12, 6))
+plt.plot(graph_data.history["loss"], label="Train MSE", color="blue")
+plt.plot(graph_data.history["val_loss"], label="Validation MSE", color="orange")
+plt.title("Epoch Bazlı Eğitim ve Doğrulama MSE Grafiği")
+plt.xlabel("Epoch")
+plt.ylabel("MSE (Hata)")
+plt.legend()
+plt.grid(True)
+plt.show()
 
 
 
@@ -64,10 +165,37 @@ print(debugdf.head(50))
 
 #görselleştirme
 
-plt.figure(figsize=(20,10))
-plt.plot(df['sensor_value'], label="sensörden gelen veriler:" )
-plt.scatter(np.where(anomalies)[0], df['sensor_value'][anomalies], color= 'red', label='arızalar,anomaliler')
-plt.legend()
+plt.figure(figsize=(20, 8))
+plt.plot(df['sensor_value'], label="Sensör Verisi", color="blue")
+plt.scatter(np.where(anomalies)[0], df['sensor_value'][anomalies], color='red', s=30, label='Anomaliler')
+plt.title("Tek Kanallı Sensör Verileri ile Anomali Tespiti (Autoencoder)", fontsize=16)
+plt.xlabel("Zaman", fontsize=14)
+plt.ylabel("Sensör Değeri", fontsize=14)
+plt.grid(alpha=0.3)
+plt.legend(fontsize=12)
 plt.show()
 
 
+#loss ve val loss grafiği çizdir 
+#şu an elde bulunan verilerle eğit, yeni gelecek verilerle test edeceğiz.
+#bir de accuracy score gibi bir şey olacak mse gibi değil de kendi varsa bir fonksiyonu gibi
+#val accuracy ve train accuracy gibi 2 tane grafik yapıp çalışma hızını inceleyeceğiz
+
+
+print(count)
+# while True:
+#     user_input = float(input("enter a value, 0 for exit\n"))
+#     if user_input == 0:
+#         print("exiting\n")
+#         break
+
+#     user_value = np.array([[user_input]])
+#     pred_value = autoencoder.predict(user_value)
+#     user_mse = np.mean(np.power(user_value - pred_value, 2))
+
+#     if user_mse > threshold:
+#         print("this is an anomaly")
+#     else:
+#         print("not an anomaly")
+  #400-430 arası %6,97674418604651 fark
+  #100-98 arası %2 fark
