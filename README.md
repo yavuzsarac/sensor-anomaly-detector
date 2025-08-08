@@ -39,11 +39,8 @@ Autoencoder ve istatistiksel yöntemler kullanılarak veriler analiz edilir.
 ---
 
 ## ▶️ Kullanım
-1. CSV veri dosyanızı `anomaly_data.csv` adıyla proje klasörüne ekleyin.
-2. Modeli çalıştırın:
-   ```bash
-   python anomaly_detector_ai
-   ```
+1. 'main.py' dosyasını çalıştırın.
+2. Terminal ekranından dosya konumunu girin.
 3. Anomali sonuçlarını terminalden ve grafik üzerinden görebilirsiniz.
 
 ---
